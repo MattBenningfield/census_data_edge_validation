@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuration for record_validation.py (DataValidation v2)
+#
+# This is the SIMPLER, per-record validator. Every row is checked on its own and
+# routed individually: clean, valid rows go to accepted_dir; rows that fail any
+# check go to rejected_dir with a reason column explaining why.
+#
+# Relative paths are resolved against the script's directory (BASE_DIR, i.e. src/).
+# Absolute paths are used as-is. Override the config file location with the
+# WFAI_RECORD_VALIDATION_CONFIG environment variable.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[schema]
+# Columns the file must contain. Order does not matter and extra columns are
+# allowed (kept in the output, flagged with a warning); if any of these columns
+# is missing, the file cannot be validated per record and is rejected wholesale.
+expected_columns = ["Type", "Facility", "Unit", "VolDate", "VolHour", "Volume"]
+# Columns that must not be empty/null in any record.
+required_columns = ["Type", "Facility", "Unit", "VolDate", "VolHour", "Volume"]
+
+[rules]
+# VolHour must be an integer within [min_hour, max_hour] inclusive.
+min_hour = 0
+max_hour = 23
+# Volume must be an integer >= min_volume.
+min_volume = 0
+# When true, unit names must match valid_units_file exactly (case-sensitive).
+# When false, the comparison ignores letter case.
+case_sensitive_units = true
+
+[paths]
+# Relative paths resolve against src/, so ../ points at the sibling data/ and
+# logs/ folders. Default file validated when no path is passed on the CLI.
+default_file = "../data/test/test_record_mix.csv"
+# Root under which per-file log folders are created.
+log_root = "../logs"
+# Rows that pass every check are routed here.
+accepted_dir = "../data/successful_data"
+# Rows that fail one or more checks are routed here.
+rejected_dir = "../data/rejected_data"
+# Aggregated rejection reports (one row per Unit + error type) are written here.
+rejected_summary_dir = "../data/rejected_summary"
+# List of valid/known units. A .txt file with one unit per line, or a .csv
+# file with a "Unit" column. Units not in this list are rejected.
+valid_units_file = "../data/valid_units.txt"
+
+[behavior]
+# When true, validated records are written out: passing rows to accepted_dir and
+# failing rows (with a reason column) to rejected_dir. When false, nothing is
+# written and the run only logs a summary.
+route_validated_files = true
+# Name of the column appended to rejected records explaining why they failed.
+rejection_reason_column = "RejectionReason"
+# When true, also write an aggregated rejection report to rejected_summary_dir:
+# one row per (Unit, error type) with a count, the record numbers, and the date
+# range affected. Requires route_validated_files = true.
+write_rejection_summary = true
+
+[logging]
+format = "%(asctime)s  %(levelname)-8s  %(message)s"
+datefmt = "%Y-%m-%d %H:%M:%S"

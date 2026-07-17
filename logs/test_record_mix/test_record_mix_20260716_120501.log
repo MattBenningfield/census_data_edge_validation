@@ -1,0 +1,24 @@
+2026-07-16 12:05:01  INFO      ======================================================================
+2026-07-16 12:05:01  INFO      WFAI RECORD VALIDATION (v2)
+2026-07-16 12:05:01  INFO      File: data/test/test_record_mix.csv
+2026-07-16 12:05:01  INFO      Log : C:\Users\MatthewBenningfield\OneDrive - Aya Healthcare\SoftwareEngineering\WorkforceAI\DataValidation_v2\src\../logs\test_record_mix\test_record_mix_20260716_120501.log
+2026-07-16 12:05:01  INFO      ======================================================================
+2026-07-16 12:05:01  INFO      Loaded 8 rows x 6 columns.
+2026-07-16 12:05:01  INFO      CHECK 1: required fields present ...
+2026-07-16 12:05:01  ERROR       1 required-field issue(s).
+2026-07-16 12:05:01  INFO      CHECK 2: cell cleanliness ...
+2026-07-16 12:05:01  ERROR       1 cell-cleanliness issue(s).
+2026-07-16 12:05:01  INFO      CHECK 3a: VolHour is an integer in [0, 23] ...
+2026-07-16 12:05:01  INFO        SUCCESS: VolHour valid.
+2026-07-16 12:05:01  INFO      CHECK 3b: Volume is an integer >= 0 ...
+2026-07-16 12:05:01  ERROR       1 Volume issue(s).
+2026-07-16 12:05:01  INFO      CHECK 3c: VolDate parses as a valid date ...
+2026-07-16 12:05:01  ERROR       1 VolDate issue(s).
+2026-07-16 12:05:01  INFO      CHECK 4: Unit is in the known-units list ...
+2026-07-16 12:05:01  ERROR       2 row(s) with an unknown Unit.
+2026-07-16 12:05:01  INFO      ======================================================================
+2026-07-16 12:05:01  INFO      SUMMARY: 3 record(s) passed, 5 record(s) rejected.
+2026-07-16 12:05:01  INFO      Successful records --> C:\Users\MatthewBenningfield\OneDrive - Aya Healthcare\SoftwareEngineering\WorkforceAI\DataValidation_v2\src\../data/successful_data\test_record_mix_successful_20260716_120501.csv (3 rows)
+2026-07-16 12:05:01  INFO      Rejected records   --> C:\Users\MatthewBenningfield\OneDrive - Aya Healthcare\SoftwareEngineering\WorkforceAI\DataValidation_v2\src\../data/rejected_data\test_record_mix_rejected_20260716_120501.csv (5 rows)
+2026-07-16 12:05:01  INFO      Rejection summary  --> C:\Users\MatthewBenningfield\OneDrive - Aya Healthcare\SoftwareEngineering\WorkforceAI\DataValidation_v2\src\../data/rejected_summary\test_record_mix_rejected_summary_20260716_120501.csv
+2026-07-16 12:05:01  INFO      ======================================================================

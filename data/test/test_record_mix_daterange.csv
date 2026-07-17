@@ -1,0 +1,13 @@
+Type,Facility,Unit,VolDate,VolHour,Volume
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/13/2026,0,10
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/13/2026,1,-1
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/14/2026,2,-5
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/15/2026,3,-3
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/16/2026,4,-2
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/17/2026,5,15
+Census,1100-York Hospital,9999-Unknown Test Unit,1/13/2026,6,20
+Census,1100-York Hospital,9999-Unknown Test Unit,1/14/2026,7,21
+Census,1100-York Hospital,9999-Unknown Test Unit,1/15/2026,8,22
+Census,1100-York Hospital,,1/13/2026,9,11
+Census,1100-York Hospital,"1100-15001 YH Oper Room - Advanced Procedural Suite""",1/13/2026,10,12
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,not-a-date,11,14

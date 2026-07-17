@@ -1,0 +1,11 @@
+Type,Facility,Unit,VolDate,VolHour,Volume,RejectionReason
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/13/2026,1,-1,Volume: below minimum (0)
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/14/2026,2,-5,Volume: below minimum (0)
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/15/2026,3,-3,Volume: below minimum (0)
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/16/2026,4,-2,Volume: below minimum (0)
+Census,1100-York Hospital,9999-Unknown Test Unit,1/13/2026,6,20,Unit: not in valid list
+Census,1100-York Hospital,9999-Unknown Test Unit,1/14/2026,7,21,Unit: not in valid list
+Census,1100-York Hospital,9999-Unknown Test Unit,1/15/2026,8,22,Unit: not in valid list
+Census,1100-York Hospital,,1/13/2026,9,11,Unit: missing/empty
+Census,1100-York Hospital,"1100-15001 YH Oper Room - Advanced Procedural Suite""",1/13/2026,10,12,Unit: quote character; Unit: not in valid list
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,not-a-date,11,14,VolDate: not a valid date

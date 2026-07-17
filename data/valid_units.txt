@@ -1,0 +1,27 @@
+1100-15001 YH Oper Room - Advanced Procedural Suite
+1100-20600 YH Coronary Care Unts - T2 - Cardio
+1100-21500 YH ICU - Surg
+1100-21501 YH ICU - Med
+1100-22700 YH Level III - Neonatal Intens Care Nursry - General
+1100-23000 YH Mother Baby Unts - Maternity Newborn Unit
+1100-23300 YH Womens Svcs LDRPN GYN - Labor and Delivery
+1100-23601 YH Med Unts - 5 South
+1100-23602 YH Med Unts - 5 Main
+1100-23603 YH Med Unts - 4 Main
+1100-23604 YH Med Unts - 4 Southwest
+1100-23605 YH Med Unts - N3A
+1100-23607 YH Med Unts - 5 East
+1100-24500 YH Onco Unts - Nursing Unt 7S
+1100-24801 YH Ortho Neuro Surg -T3
+1100-25700 YH Pediatric Unts - General
+1100-26002 YH Progress Care IMCU - T2
+1100-26003 YH Progress Care IMCU - 4 Southwest Med
+1100-26600 YH Spec ICU - Neuroscience
+1100-26601 YH Spec ICU - O H Intens Care Unt ICU
+1100-26602 YH Spec ICU - Cardiac Intens Care Unt ICU
+1100-26603 YH Spec ICU - Trauma Surg Intens Care Unt ICU
+1100-26900 YH Surg Unts - 6 South Nursing Unit
+1100-26901 YH Surg Unts - 6 Main Nursing Unit
+1100-32326 YH Emerg Dept - Emerg Transitional Care Unit
+1100-32327 YH Emerg Dept - General
+1100-50000 YH Adult Psych Unts - InPtnt Pgm - 4301

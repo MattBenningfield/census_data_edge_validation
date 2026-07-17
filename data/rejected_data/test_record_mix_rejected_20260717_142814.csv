@@ -1,0 +1,6 @@
+Type,Facility,Unit,VolDate,VolHour,Volume,RejectionReason
+Census,1100-York Hospital,,1/13/2026,1,11,Unit: missing/empty
+Census,1100-York Hospital,"1100-15001 YH Oper Room - Advanced Procedural Suite""",1/13/2026,2,12,Unit: quote character; Unit: not in valid list
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,1/13/2026,3,-1,Volume: below minimum (0)
+Census,1100-York Hospital,1100-15001 YH Oper Room - Advanced Procedural Suite,not-a-date,4,14,VolDate: not a valid date
+Census,1100-York Hospital,9999-Unknown Test Unit,1/13/2026,5,15,Unit: not in valid list

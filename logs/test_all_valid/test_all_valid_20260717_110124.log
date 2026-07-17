@@ -1,0 +1,22 @@
+2026-07-17 11:01:24  INFO      ======================================================================
+2026-07-17 11:01:24  INFO      WFAI RECORD VALIDATION (v2)
+2026-07-17 11:01:24  INFO      File: data/test/test_all_valid.csv
+2026-07-17 11:01:24  INFO      Log : C:\Users\MatthewBenningfield\OneDrive - Aya Healthcare\SoftwareEngineering\WorkforceAI\DataValidation_v2\src\../logs\test_all_valid\test_all_valid_20260717_110124.log
+2026-07-17 11:01:24  INFO      ======================================================================
+2026-07-17 11:01:24  INFO      Loaded 6 rows x 6 columns.
+2026-07-17 11:01:24  INFO      CHECK 1: required fields present ...
+2026-07-17 11:01:24  INFO        SUCCESS: all required fields present.
+2026-07-17 11:01:24  INFO      CHECK 2: cell cleanliness ...
+2026-07-17 11:01:24  INFO        SUCCESS: no cell-level issues found.
+2026-07-17 11:01:24  INFO      CHECK 3a: VolHour is an integer in [0, 23] ...
+2026-07-17 11:01:24  INFO        SUCCESS: VolHour valid.
+2026-07-17 11:01:24  INFO      CHECK 3b: Volume is an integer >= 0 ...
+2026-07-17 11:01:24  INFO        SUCCESS: Volume valid.
+2026-07-17 11:01:24  INFO      CHECK 3c: VolDate parses as a valid date ...
+2026-07-17 11:01:24  INFO        SUCCESS: all VolDate values parse.
+2026-07-17 11:01:24  INFO      CHECK 4: Unit is in the known-units list ...
+2026-07-17 11:01:24  INFO        SUCCESS: all units present in the valid list.
+2026-07-17 11:01:24  INFO      ======================================================================
+2026-07-17 11:01:24  INFO      SUMMARY: 6 record(s) passed, 0 record(s) rejected.
+2026-07-17 11:01:24  INFO      Successful records --> C:\Users\MatthewBenningfield\OneDrive - Aya Healthcare\SoftwareEngineering\WorkforceAI\DataValidation_v2\src\../data/successful_data\test_all_valid_successful_20260717_110124.csv (6 rows)
+2026-07-17 11:01:24  INFO      ======================================================================

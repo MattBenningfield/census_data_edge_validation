@@ -1,0 +1,7 @@
+Unit,ErrorType,Count,RecordNumbers,DateRange
+(missing),Unit: missing/empty,1,10,01/13/2026
+1100-15001 YH Oper Room - Advanced Procedural Suite,Volume: below minimum (0),4,2 to 5,01/13/2026 - 01/16/2026
+1100-15001 YH Oper Room - Advanced Procedural Suite,VolDate: not a valid date,1,12,
+"1100-15001 YH Oper Room - Advanced Procedural Suite""",Unit: not in valid list,1,11,01/13/2026
+"1100-15001 YH Oper Room - Advanced Procedural Suite""",Unit: quote character,1,11,01/13/2026
+9999-Unknown Test Unit,Unit: not in valid list,3,7 to 9,01/13/2026 - 01/15/2026

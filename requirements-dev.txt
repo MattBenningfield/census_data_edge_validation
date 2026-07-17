@@ -1,0 +1,7 @@
+# Development / test dependencies for the record validator (DataValidation v2).
+# Install:  py -m pip install -r requirements-dev.txt
+#
+# Requires Python 3.11+ (the validator uses the stdlib `tomllib`).
+
+pandas>=2.2      # runtime dependency (DataFrame handling)
+pytest>=8.0      # test runner for the suite under test/
