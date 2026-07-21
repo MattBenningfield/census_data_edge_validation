@@ -1,9 +1,10 @@
 """
 Shared pytest fixtures/config for the record-validator test suite.
 
-Puts src/ on sys.path so record_validation can be imported, configures the
-module from the real config before each test, and provides helpers for building
-DataFrames and temporary config files.
+Puts src/ on sys.path so record_validation can be imported, and provides helpers
+for building DataFrames and temporary config files. Tests build their own
+CensusFileProcessor instances (from the real config or a temp one), so there is
+no module-level configuration step here.
 """
 import os
 import sys
@@ -18,20 +19,7 @@ SRC = os.path.join(
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
-import record_validation as v  # noqa: E402
-
 COLS = ["Type", "Facility", "Unit", "VolDate", "VolHour", "Volume"]
-
-
-@pytest.fixture(autouse=True)
-def _configured():
-    """
-    Populate the module's settings from the real config before every test so
-    globals like EXPECTED_COLUMNS / MIN_VOLUME / VALID_UNITS_CMP are realistic.
-    Individual tests may still monkeypatch specific globals.
-    """
-    v.configure()
-    yield
 
 
 @pytest.fixture
