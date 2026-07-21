@@ -87,7 +87,7 @@ contact any database.
 ```
 DataValidation_v2/
 ├── src/
-│   ├── record_validation.py   # the validator
+│   ├── record_validation.py   # CensusFileProcessor + CLI entry point
 │   └── config.toml            # columns, rules, paths, routing
 ├── test/
 │   ├── conftest.py
@@ -97,7 +97,8 @@ DataValidation_v2/
 │   ├── valid_units.txt        # bootstrap known-units reference (from the DB)
 │   ├── test/                  # generated fixtures
 │   ├── successful_data/       # passing rows land here
-│   └── rejected_data/         # failing rows land here (+ RejectionReason)
+│   ├── rejected_data/         # failing rows land here (+ RejectionReason)
+│   └── rejected_summary/      # aggregated per-Unit/error rejection reports
 ├── logs/                      # per-file run logs
 ├── pytest.ini
 └── requirements-dev.txt
@@ -122,3 +123,25 @@ py -m pytest -q
 Behavior, columns, thresholds, and paths are all configurable in
 [`src/config.toml`](src/config.toml). Override the config location with the
 `WFAI_RECORD_VALIDATION_CONFIG` environment variable.
+
+## Programmatic use
+
+The validator is implemented as a `CensusFileProcessor` class, so it can be
+driven directly instead of via the CLI. One instance holds the configuration and
+the valid-units reference and can validate many files in sequence — build it
+once, then call `process_file()` per file. This suits a warm-start AWS Lambda
+handler (construct the processor outside the handler, invoke it per event).
+
+```python
+from record_validation import CensusFileProcessor
+
+processor = CensusFileProcessor.from_config_file()   # or pass a config path
+exit_code = processor.process_file("data/test/test_record_mix.csv")
+# exit_code: 0 = all records passed, 1 = some rejected / schema invalid,
+#            2 = input file missing or unreadable
+```
+
+`process_file()` returns the exit code rather than terminating the process; only
+the CLI `main()` calls `sys.exit()`. Individual steps are also available on the
+instance — `validate_records(df)` returns a per-row reason Series, and
+`build_rejection_summary(failed_df)` returns the aggregated report.
