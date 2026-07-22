@@ -151,6 +151,15 @@ def main():
     ]
     write(pd.DataFrame(rows, columns=COLS), "test_record_mix_daterange.csv")
 
+    # 9. Duplicates — same (Type, Facility, Unit, VolDate, VolHour) with a
+    #    different Volume. The higher-Volume row is kept (routed to successful);
+    #    the lower-Volume row is rejected with the reason "duplicate value".
+    df = valid_frame()
+    dup = df.iloc[[0]].copy()
+    dup["Volume"] = int(df.iloc[0]["Volume"]) + 100   # higher-Volume duplicate
+    df = pd.concat([df, dup], ignore_index=True)
+    write(df, "test_duplicates.csv")
+
     print("\nDone. test_all_valid.csv passes entirely; each other fixture has "
           "one or more rows that fail the matching check; test_record_mix.csv "
           "splits across successful and rejected output; "

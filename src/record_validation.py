@@ -20,6 +20,10 @@ Each record is checked for:
   3. Cell cleanliness         — no leading/trailing whitespace, quote characters,
                                 or control/non-printable characters in any field.
   4. Unit in known list       — the row's Unit exists in the valid-units list.
+  5. No duplicate records      — rows sharing (Type, Facility, Unit, VolDate,
+                                VolHour) are duplicates; among otherwise-valid
+                                duplicates the highest-Volume row is kept and the
+                                rest are rejected as "duplicate value".
 
 Rows that pass every check are routed to accepted_dir; rows that fail are routed
 to rejected_dir with a RejectionReason column, and an aggregated report is
@@ -78,6 +82,7 @@ def load_config(path=CONFIG_PATH):
         return {
             "expected_columns": cfg["schema"]["expected_columns"],
             "required_columns": cfg["schema"]["required_columns"],
+            "dup_keys": cfg["schema"]["dup_keys"],
             "min_hour": cfg["rules"]["min_hour"],
             "max_hour": cfg["rules"]["max_hour"],
             "min_volume": cfg["rules"]["min_volume"],
@@ -91,6 +96,7 @@ def load_config(path=CONFIG_PATH):
             "route_files": cfg["behavior"]["route_validated_files"],
             "rejection_reason_column": cfg["behavior"]["rejection_reason_column"],
             "write_rejection_summary": cfg["behavior"]["write_rejection_summary"],
+            "check_duplicates": cfg["behavior"]["check_duplicates"],
             "log_format": cfg["logging"]["format"],
             "log_datefmt": cfg["logging"]["datefmt"],
         }
@@ -142,6 +148,7 @@ class CensusFileProcessor:
     def __init__(self, config, valid_units=None):
         self.expected_columns = config["expected_columns"]
         self.required_columns = config["required_columns"]
+        self.dup_keys = config["dup_keys"]
         self.min_hour = config["min_hour"]
         self.max_hour = config["max_hour"]
         self.min_volume = config["min_volume"]
@@ -155,6 +162,7 @@ class CensusFileProcessor:
         self.route_files = config["route_files"]
         self.rejection_reason_column = config["rejection_reason_column"]
         self.write_summary = config["write_rejection_summary"]
+        self.check_duplicates = config["check_duplicates"]
         self.log_format = config["log_format"]
         self.log_datefmt = config["log_datefmt"]
 
@@ -349,9 +357,61 @@ class CensusFileProcessor:
         else:
             log.info("  SUCCESS: all units present in the valid list.")
 
+    def _resolve_duplicates(self, df, reasons):
+        """
+        Resolve duplicate records (a cross-record check).
+
+        Rows sharing the same key columns (self.dup_keys — Type, Facility, Unit,
+        VolDate, VolHour) are duplicates. Among the rows that otherwise pass
+        every check, the one with the highest Volume is kept and the rest are
+        rejected with the reason "duplicate value" (ties keep the first
+        occurrence).
+
+        Only rows that already pass every per-record check are considered, so a
+        clean record is never dropped in favour of a higher-Volume duplicate that
+        fails another check — that invalid row is simply rejected for its own
+        reason and the clean, lower-Volume row is kept.
+        """
+        if not self.check_duplicates:
+            log.info("CHECK 5: duplicate check disabled (check_duplicates=false).")
+            return
+
+        log.info("CHECK 5: duplicate keys (same %s, keep higher Volume) ...",
+                 self.dup_keys)
+        if not all(c in df.columns for c in self.dup_keys + ["Volume"]):
+            log.error("  Cannot check duplicates: required columns missing.")
+            return
+
+        # Only otherwise-valid rows compete to be kept; their Volume already
+        # passed its check, so it is a clean non-negative integer.
+        eligible = reasons == ""
+        sub = df[eligible]
+        if len(sub) < 2:
+            log.info("  SUCCESS: no duplicates among valid records.")
+            return
+
+        volume = pd.to_numeric(sub["Volume"], errors="coerce")
+        # Highest Volume first (stable, so ties keep original order); the first
+        # row per key is the keeper, every later row with that key is a loser.
+        order = volume.sort_values(ascending=False, kind="stable").index
+        dup_mask = sub.loc[order].duplicated(subset=self.dup_keys, keep="first")
+        losers = dup_mask.index[dup_mask]
+
+        if len(losers):
+            mask = pd.Series(df.index.isin(losers), index=df.index)
+            n = self._append(reasons, mask, "duplicate value")
+            log.error("  %d duplicate record(s) rejected (kept higher Volume).",
+                      int(n))
+        else:
+            log.info("  SUCCESS: no duplicate keys among valid records.")
+
     def validate_records(self, df):
         """
-        Run every per-record check and build a per-row reason string.
+        Run every check and build a per-row reason string.
+
+        The per-record checks run first (each row judged on its own), then the
+        cross-record duplicate resolution decides which of any otherwise-valid
+        duplicates to keep.
 
         Returns:
             pd.Series: One string per row (aligned to df.index). Empty means the
@@ -365,6 +425,7 @@ class CensusFileProcessor:
         self._check_volume(df, reasons)
         self._check_voldate(df, reasons)
         self._check_unit_in_list(df, reasons)
+        self._resolve_duplicates(df, reasons)
         return reasons
 
     # ── rejection summary ─────────────────────────────────────────────────────

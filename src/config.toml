@@ -17,6 +17,10 @@
 expected_columns = ["Type", "Facility", "Unit", "VolDate", "VolHour", "Volume"]
 # Columns that must not be empty/null in any record.
 required_columns = ["Type", "Facility", "Unit", "VolDate", "VolHour", "Volume"]
+# Columns whose combination identifies a duplicate record. Rows sharing these
+# values are duplicates; among otherwise-valid duplicates the highest-Volume row
+# is kept and the rest are rejected with the reason "duplicate value".
+dup_keys = ["Type", "Facility", "Unit", "VolDate", "VolHour"]
 
 [rules]
 # VolHour must be an integer within [min_hour, max_hour] inclusive.
@@ -55,6 +59,10 @@ rejection_reason_column = "RejectionReason"
 # one row per (Unit, error type) with a count, the record numbers, and the date
 # range affected. Requires route_validated_files = true.
 write_rejection_summary = true
+# When true, run the duplicate check (CHECK 5): among rows sharing dup_keys, keep
+# the highest-Volume row and reject the rest as "duplicate value". When false,
+# duplicates are left untouched and all pass through the other checks normally.
+check_duplicates = true
 
 [logging]
 format = "%(asctime)s  %(levelname)-8s  %(message)s"

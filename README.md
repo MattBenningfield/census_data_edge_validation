@@ -40,6 +40,14 @@ Example of a successful file (rows that pass every check):
 3. **Cell cleanliness** — no leading/trailing whitespace, quote characters, or
    control/non-printable characters in any field.
 4. **Unit in known list** — the row's `Unit` exists in the valid-units list.
+5. **No duplicate records** — rows sharing the same `Type`, `Facility`, `Unit`,
+   `VolDate`, and `VolHour` are duplicates. Among otherwise-valid duplicates, the
+   row with the **highest `Volume`** is kept (routed to successful) and the rest
+   are rejected with the reason `duplicate value`. This is the one *cross-record*
+   check — it compares rows to each other rather than judging each in isolation.
+   A row that fails another check is rejected for that reason, so a clean,
+   lower-`Volume` record is never dropped in favour of an invalid higher one.
+   This check can be turned off with `check_duplicates = false` in the config.
 
 ## Routing
 

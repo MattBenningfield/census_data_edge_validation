@@ -137,6 +137,102 @@ def test_multiple_reasons_join(processor, make_df):
     assert "below minimum" in reason
 
 
+# ─────────────────────────── duplicate resolution ───────────────────────────
+
+def test_duplicate_keeps_higher_volume(processor, make_df):
+    u = _first_unit(processor)
+    df = make_df([
+        ["Census", "F", u, "1/13/2026", 0, 10],   # dup key, lower vol -> rejected
+        ["Census", "F", u, "1/13/2026", 0, 25],   # dup key, higher vol -> kept
+        ["Census", "F", u, "1/13/2026", 1, 5],    # unique key -> kept
+    ])
+    reasons = processor.validate_records(df)
+    assert "duplicate value" in reasons.iloc[0]
+    assert reasons.iloc[1] == ""
+    assert reasons.iloc[2] == ""
+
+
+def test_duplicate_three_rows_keeps_max(processor, make_df):
+    u = _first_unit(processor)
+    df = make_df([
+        ["Census", "F", u, "1/13/2026", 0, 10],
+        ["Census", "F", u, "1/13/2026", 0, 30],   # max -> kept
+        ["Census", "F", u, "1/13/2026", 0, 20],
+    ])
+    reasons = processor.validate_records(df)
+    assert reasons.iloc[1] == ""
+    assert "duplicate value" in reasons.iloc[0]
+    assert "duplicate value" in reasons.iloc[2]
+
+
+def test_exact_duplicate_rejected(processor, make_df):
+    """Same key AND same Volume: keep the first, reject the rest."""
+    u = _first_unit(processor)
+    df = make_df([
+        ["Census", "F", u, "1/13/2026", 0, 15],   # first -> kept
+        ["Census", "F", u, "1/13/2026", 0, 15],   # exact dup -> rejected
+    ])
+    reasons = processor.validate_records(df)
+    assert reasons.iloc[0] == ""
+    assert "duplicate value" in reasons.iloc[1]
+
+
+def test_duplicate_ignores_invalid_higher_volume(processor, make_df):
+    """A clean lower-Volume row is kept over an invalid higher-Volume duplicate."""
+    u = _first_unit(processor)
+    df = make_df([
+        ["Census", "F", u, "1/13/2026", 0, 10],     # clean -> kept
+        ["Census", "F", u, "1/13/2026", 0, 20.5],   # fractional Volume -> rejected
+    ])
+    reasons = processor.validate_records(df)
+    assert reasons.iloc[0] == ""                     # kept, not flagged duplicate
+    assert "duplicate value" not in reasons.iloc[0]
+    assert "not an integer" in reasons.iloc[1]
+
+
+def test_no_false_duplicate_when_keys_differ(processor, make_df):
+    """Same values but a different VolHour is not a duplicate."""
+    u = _first_unit(processor)
+    df = make_df([
+        ["Census", "F", u, "1/13/2026", 0, 10],
+        ["Census", "F", u, "1/13/2026", 1, 20],   # different hour -> not a dup
+    ])
+    assert (processor.validate_records(df) == "").all()
+
+
+def test_process_file_routes_duplicates(tmp_path, monkeypatch, write_config):
+    proc = _make_processor(tmp_path, monkeypatch, write_config, ["UnitA"])
+    df = pd.DataFrame([
+        ["Census", "F", "UnitA", "1/13/2026", 0, 10],   # dup lower -> rejected
+        ["Census", "F", "UnitA", "1/13/2026", 0, 25],   # dup higher -> successful
+        ["Census", "F", "UnitA", "1/13/2026", 1, 7],    # unique -> successful
+    ], columns=COLS)
+    input_csv = tmp_path / "dupes.csv"
+    df.to_csv(input_csv, index=False)
+
+    assert proc.process_file(str(input_csv)) == 1
+
+    ok_df = pd.read_csv(tmp_path / "ok" / os.listdir(tmp_path / "ok")[0])
+    bad_df = pd.read_csv(tmp_path / "bad" / os.listdir(tmp_path / "bad")[0])
+    assert sorted(ok_df["Volume"]) == [7, 25]
+    assert len(bad_df) == 1
+    assert bad_df["Volume"].iloc[0] == 10
+    assert bad_df[proc.rejection_reason_column].str.contains("duplicate value").all()
+
+
+def test_duplicate_check_can_be_disabled(tmp_path, monkeypatch, write_config,
+                                         make_df):
+    """With check_duplicates=false, duplicates are left untouched."""
+    proc = _make_processor(tmp_path, monkeypatch, write_config, ["UnitA"],
+                           check_duplicates=False)
+    df = make_df([
+        ["Census", "F", "UnitA", "1/13/2026", 0, 10],   # would be the dup loser
+        ["Census", "F", "UnitA", "1/13/2026", 0, 25],   # would be the dup winner
+    ])
+    reasons = proc.validate_records(df)
+    assert (reasons == "").all()   # neither flagged; the check is off
+
+
 # ─────────────────────────── rejection summary ──────────────────────────────
 
 def test_format_ranges():
