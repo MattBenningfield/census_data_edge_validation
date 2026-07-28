@@ -62,6 +62,7 @@ def write_config():
             rejection_reason_column = "RejectionReason"
             write_rejection_summary = {str(write_rejection_summary).lower()}
             check_duplicates = {str(check_duplicates).lower()}
+            timestamp_column = "VolTimestamp"
             [logging]
             format = "%(asctime)s  %(levelname)-8s  %(message)s"
             datefmt = "%Y-%m-%d %H:%M:%S"

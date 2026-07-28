@@ -57,6 +57,14 @@ Validation is **row-level**:
 - Rows that fail one or more checks are written to `data/rejected_data/` with a
   `RejectionReason` column naming every problem found on that row.
 
+**Output columns:** in the routed files, `VolDate` and `VolHour` are combined into
+a single `VolTimestamp` column formatted `YYYY-MM-DDTHH:00:00Z` (UTC, hour
+resolution — matching the DynamoDB validation-errors schema), and the original
+`VolDate`/`VolHour` columns are dropped. So a successful row looks like
+`Type, Facility, Unit, VolTimestamp, Volume`. A rejected row whose date or hour is
+invalid gets an empty `VolTimestamp` (it can't form a valid timestamp). The
+column name is configurable via `timestamp_column` in the config.
+
 > **Production note:** in production, successful records are routed to a
 > **DynamoDB database** rather than to the `data/successful_data/` file directory.
 > The local file output is the development/testing behavior; the DynamoDB

@@ -63,6 +63,11 @@ write_rejection_summary = true
 # the highest-Volume row and reject the rest as "duplicate value". When false,
 # duplicates are left untouched and all pass through the other checks normally.
 check_duplicates = true
+# Name of the single timestamp column written to the successful/rejected output
+# files. On output, VolDate and VolHour are combined into this column, formatted
+# as "YYYY-MM-DDTHH:00:00Z" (UTC, hour resolution) to match the DynamoDB
+# validation-errors schema, and the original VolDate/VolHour columns are dropped.
+timestamp_column = "VolTimestamp"
 
 [logging]
 format = "%(asctime)s  %(levelname)-8s  %(message)s"

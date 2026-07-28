@@ -233,6 +233,58 @@ def test_duplicate_check_can_be_disabled(tmp_path, monkeypatch, write_config,
     assert (reasons == "").all()   # neither flagged; the check is off
 
 
+# ─────────────────────────── output timestamp column ────────────────────────
+
+def test_to_output_frame_combines_and_drops(processor, make_df):
+    df = make_df([["Census", "F", "UnitX", "1/13/2026", 5, 17]])
+    out = processor._to_output_frame(df)
+    assert list(out.columns) == [
+        "Type", "Facility", "Unit", processor.timestamp_column, "Volume"
+    ]
+    assert "VolDate" not in out.columns and "VolHour" not in out.columns
+    assert out[processor.timestamp_column].iloc[0] == "2026-01-13T05:00:00Z"
+
+
+def test_output_files_use_timestamp_column(tmp_path, monkeypatch, write_config):
+    proc = _make_processor(tmp_path, monkeypatch, write_config, ["UnitA"])
+    df = pd.DataFrame([
+        ["Census", "F", "UnitA", "1/13/2026", 5, 17],    # valid -> successful
+        ["Census", "F", "BadUnit", "1/13/2026", 6, 8],   # unknown unit -> rejected
+    ], columns=COLS)
+    input_csv = tmp_path / "batch.csv"
+    df.to_csv(input_csv, index=False)
+
+    assert proc.process_file(str(input_csv)) == 1
+    ts = proc.timestamp_column
+
+    ok_df = pd.read_csv(tmp_path / "ok" / os.listdir(tmp_path / "ok")[0])
+    assert ts in ok_df.columns
+    assert "VolDate" not in ok_df.columns and "VolHour" not in ok_df.columns
+    assert ok_df[ts].iloc[0] == "2026-01-13T05:00:00Z"
+
+    bad_df = pd.read_csv(tmp_path / "bad" / os.listdir(tmp_path / "bad")[0])
+    assert ts in bad_df.columns and "VolDate" not in bad_df.columns
+    # rejected row had a valid date/hour, so it still carries a timestamp
+    assert bad_df[ts].iloc[0] == "2026-01-13T06:00:00Z"
+    assert proc.rejection_reason_column in bad_df.columns
+
+
+def test_output_timestamp_blank_when_datetime_invalid(tmp_path, monkeypatch,
+                                                      write_config):
+    """A rejected row with an unparseable date gets an empty timestamp."""
+    proc = _make_processor(tmp_path, monkeypatch, write_config, ["UnitA"])
+    df = pd.DataFrame([
+        ["Census", "F", "UnitA", "not-a-date", 5, 10],   # bad date -> rejected
+    ], columns=COLS)
+    input_csv = tmp_path / "batch.csv"
+    df.to_csv(input_csv, index=False)
+
+    assert proc.process_file(str(input_csv)) == 1
+    bad_df = pd.read_csv(tmp_path / "bad" / os.listdir(tmp_path / "bad")[0])
+    value = bad_df[proc.timestamp_column].iloc[0]
+    assert pd.isna(value) or value == ""   # empty cell reads back as NaN
+
+
 # ─────────────────────────── rejection summary ──────────────────────────────
 
 def test_format_ranges():

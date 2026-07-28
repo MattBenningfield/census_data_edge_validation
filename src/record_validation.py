@@ -30,6 +30,10 @@ to rejected_dir with a RejectionReason column, and an aggregated report is
 written to rejected_summary_dir. process_file() returns a shell-style exit code
 (0 = all passed, 1 = some rejected / schema invalid, 2 = file/read error).
 
+In the routed output, VolDate and VolHour are combined into a single UTC
+timestamp column (see timestamp_column) formatted "YYYY-MM-DDTHH:00:00Z", and the
+original VolDate/VolHour columns are dropped.
+
 Usage:
     python record_validation.py
     python record_validation.py path/to/file.csv
@@ -97,6 +101,7 @@ def load_config(path=CONFIG_PATH):
             "rejection_reason_column": cfg["behavior"]["rejection_reason_column"],
             "write_rejection_summary": cfg["behavior"]["write_rejection_summary"],
             "check_duplicates": cfg["behavior"]["check_duplicates"],
+            "timestamp_column": cfg["behavior"]["timestamp_column"],
             "log_format": cfg["logging"]["format"],
             "log_datefmt": cfg["logging"]["datefmt"],
         }
@@ -163,6 +168,7 @@ class CensusFileProcessor:
         self.rejection_reason_column = config["rejection_reason_column"]
         self.write_summary = config["write_rejection_summary"]
         self.check_duplicates = config["check_duplicates"]
+        self.timestamp_column = config["timestamp_column"]
         self.log_format = config["log_format"]
         self.log_datefmt = config["log_datefmt"]
 
@@ -518,6 +524,44 @@ class CensusFileProcessor:
             ["Unit", "Count", "ErrorType"], ascending=[True, False, True]
         ).reset_index(drop=True)
 
+    # ── output shaping ──────────────────────────────────────────────────────────
+
+    def _to_output_frame(self, df):
+        """
+        Shape a DataFrame for output: combine VolDate + VolHour into one UTC
+        timestamp column (self.timestamp_column), formatted "YYYY-MM-DDTHH:00:00Z"
+        to match the DynamoDB validation-errors schema, and drop the original
+        VolDate and VolHour columns.
+
+        The new column takes VolDate's position; all other columns (including any
+        RejectionReason) keep their order. Rows whose VolDate/VolHour cannot form
+        a valid timestamp (e.g. rejected rows with a bad date or hour) get an
+        empty string. If either source column is absent (e.g. a schema-invalid
+        file), the frame is returned unchanged.
+
+        Returns:
+            pd.DataFrame: A new frame with the timestamp column in place of
+            VolDate/VolHour.
+        """
+        if "VolDate" not in df.columns or "VolHour" not in df.columns:
+            return df
+
+        parsed = pd.to_datetime(df["VolDate"], format="mixed", errors="coerce")
+        hour = pd.to_numeric(df["VolHour"], errors="coerce")
+        valid = (
+            parsed.notna() & hour.notna()
+            & (hour % 1 == 0) & (hour >= 0) & (hour <= 23)
+        )
+        full = parsed.dt.normalize() + pd.to_timedelta(hour.where(valid, 0), unit="h")
+        stamped = full.dt.strftime("%Y-%m-%dT%H:00:00Z")
+
+        ts = pd.Series("", index=df.index, dtype="object")
+        ts.loc[valid] = stamped.loc[valid]
+
+        out = df.copy()
+        out.insert(out.columns.get_loc("VolDate"), self.timestamp_column, ts)
+        return out.drop(columns=["VolDate", "VolHour"])
+
     # ── routing ────────────────────────────────────────────────────────────────
 
     def route_records(self, csv_path, passed_df, failed_df):
@@ -540,7 +584,7 @@ class CensusFileProcessor:
             successful_path = os.path.join(
                 self.accepted_dir, f"{stem}_successful_{stamp}.csv"
             )
-            passed_df.to_csv(successful_path, index=False)
+            self._to_output_frame(passed_df).to_csv(successful_path, index=False)
 
         rejected_path = None
         if not failed_df.empty:
@@ -548,7 +592,7 @@ class CensusFileProcessor:
             rejected_path = os.path.join(
                 self.rejected_dir, f"{stem}_rejected_{stamp}.csv"
             )
-            failed_df.to_csv(rejected_path, index=False)
+            self._to_output_frame(failed_df).to_csv(rejected_path, index=False)
 
         return successful_path, rejected_path
 
