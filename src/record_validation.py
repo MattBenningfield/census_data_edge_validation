@@ -34,16 +34,24 @@ In the routed output, VolDate and VolHour are combined into a single UTC
 timestamp column (see timestamp_column) formatted "YYYY-MM-DDTHH:00:00Z", and the
 original VolDate/VolHour columns are dropped.
 
+When write_dynamo_output is enabled, the run also emits DynamoDB-shaped JSON to
+dynamo_dir: a file-level Files (Table 3) META item and one Validation Errors
+(Table 4) item per record-level error, matching dynamo_schema.md — plain dicts
+ready for boto3.put_item once live DynamoDB writing is wired up.
+
 Usage:
     python record_validation.py
     python record_validation.py path/to/file.csv
 """
 
+import hashlib
+import json
 import logging
 import os
 import sys
 import tomllib
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -102,6 +110,10 @@ def load_config(path=CONFIG_PATH):
             "write_rejection_summary": cfg["behavior"]["write_rejection_summary"],
             "check_duplicates": cfg["behavior"]["check_duplicates"],
             "timestamp_column": cfg["behavior"]["timestamp_column"],
+            "write_dynamo_output": cfg["dynamo"]["write_dynamo_output"],
+            "dynamo_dir": _resolve(cfg["dynamo"]["dynamo_dir"]),
+            "org_id": cfg["dynamo"]["org_id"],
+            "file_type": cfg["dynamo"]["file_type"],
             "log_format": cfg["logging"]["format"],
             "log_datefmt": cfg["logging"]["datefmt"],
         }
@@ -137,6 +149,68 @@ def load_valid_units(path):
     return valid
 
 
+# ─── DynamoDB mapping helpers ────────────────────────────────────────────────
+
+# Sentinel timestamp for errors that can't be tied to a valid hour (per
+# dynamo_schema.md's note on structural / timestamp-less errors).
+SENTINEL_TIMESTAMP = "0000-00-00T00:00:00Z"
+
+# Ordered file-level checks reported in the Files item's validation_checks[].
+CHECK_ORDER = [
+    ("SCHEMA", "Schema / required columns"),
+    ("REQUIRED_VALUE", "Required fields present"),
+    ("CELL_CLEANLINESS", "Cell cleanliness"),
+    ("VALUE_FORMAT", "Type & range formatting"),
+    ("UNKNOWN_UNIT", "Unit in the known-units list"),
+    ("DUPLICATE_RECORD", "Duplicate records"),
+]
+
+
+def _classify_note(note):
+    """
+    Map a per-row rejection note to a (check_id, column) pair.
+
+    Notes have the form "Column: issue" (e.g. "VolHour: outside 0-23"), plus the
+    special cases "duplicate value" and the file-level "Schema: ..." reason.
+
+    Returns:
+        tuple[str, str]: (check_id, column). column is "" when not applicable.
+    """
+    if note == "duplicate value":
+        return "DUPLICATE_RECORD", ""
+    if note.startswith("Schema:"):
+        return "SCHEMA", ""
+
+    column, sep, issue = note.partition(": ")
+    if not sep:
+        return "VALUE_FORMAT", ""
+    issue = issue.lower()
+    if "missing/empty" in issue:
+        return "REQUIRED_VALUE", column
+    if "whitespace" in issue or "quote" in issue or "control" in issue:
+        return "CELL_CLEANLINESS", column
+    if "not in valid list" in issue:
+        return "UNKNOWN_UNIT", column
+    return "VALUE_FORMAT", column
+
+
+def _json_safe(value):
+    """
+    Convert a DataFrame cell to a JSON-serializable native value.
+
+    Returns:
+        The value as a native Python int/float/str, or None for missing values.
+    """
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if hasattr(value, "item"):  # numpy scalar -> native Python scalar
+        value = value.item()
+    return value
+
+
 # ─── Processor ───────────────────────────────────────────────────────────────
 
 
@@ -169,6 +243,10 @@ class CensusFileProcessor:
         self.write_summary = config["write_rejection_summary"]
         self.check_duplicates = config["check_duplicates"]
         self.timestamp_column = config["timestamp_column"]
+        self.write_dynamo = config["write_dynamo_output"]
+        self.dynamo_dir = config["dynamo_dir"]
+        self.org_id = config["org_id"]
+        self.file_type = config["file_type"]
         self.log_format = config["log_format"]
         self.log_datefmt = config["log_datefmt"]
 
@@ -546,6 +624,23 @@ class CensusFileProcessor:
         if "VolDate" not in df.columns or "VolHour" not in df.columns:
             return df
 
+        ts = self._timestamp_series(df)
+        out = df.copy()
+        out.insert(out.columns.get_loc("VolDate"), self.timestamp_column, ts)
+        return out.drop(columns=["VolDate", "VolHour"])
+
+    def _timestamp_series(self, df):
+        """
+        Build a per-row UTC timestamp Series from VolDate + VolHour, formatted
+        "YYYY-MM-DDTHH:00:00Z". Rows whose date/hour can't form a valid timestamp
+        (unparseable date, non-integer or out-of-range hour) get an empty string.
+
+        Returns:
+            pd.Series: One string per row, aligned to df.index.
+        """
+        ts = pd.Series("", index=df.index, dtype="object")
+        if "VolDate" not in df.columns or "VolHour" not in df.columns:
+            return ts
         parsed = pd.to_datetime(df["VolDate"], format="mixed", errors="coerce")
         hour = pd.to_numeric(df["VolHour"], errors="coerce")
         valid = (
@@ -554,13 +649,8 @@ class CensusFileProcessor:
         )
         full = parsed.dt.normalize() + pd.to_timedelta(hour.where(valid, 0), unit="h")
         stamped = full.dt.strftime("%Y-%m-%dT%H:00:00Z")
-
-        ts = pd.Series("", index=df.index, dtype="object")
         ts.loc[valid] = stamped.loc[valid]
-
-        out = df.copy()
-        out.insert(out.columns.get_loc("VolDate"), self.timestamp_column, ts)
-        return out.drop(columns=["VolDate", "VolHour"])
+        return ts
 
     # ── routing ────────────────────────────────────────────────────────────────
 
@@ -620,6 +710,157 @@ class CensusFileProcessor:
         summary.to_csv(summary_path, index=False)
         return summary_path
 
+    # ── DynamoDB-shaped output ───────────────────────────────────────────────
+
+    def build_error_items(self, file_id, failed_df, created_at):
+        """
+        Build Validation Errors (Table 4) items — one per (row, reason note).
+
+        Returns:
+            list[dict]: Items keyed by PK=FILE#<file_id> and a timestamped SK,
+            with the record-level error attributes from dynamo_schema.md.
+        """
+        items = []
+        if failed_df.empty:
+            return items
+
+        ts = self._timestamp_series(failed_df)
+        for idx, reason in failed_df[self.rejection_reason_column].items():
+            try:
+                record_no = int(idx) + 1
+            except (TypeError, ValueError):
+                record_no = None
+            row_ts = ts.loc[idx] or SENTINEL_TIMESTAMP
+            facility = _json_safe(failed_df.at[idx, "Facility"]) \
+                if "Facility" in failed_df.columns else None
+            unit = _json_safe(failed_df.at[idx, "Unit"]) \
+                if "Unit" in failed_df.columns else None
+
+            for note in str(reason).split("; "):
+                if not note:
+                    continue
+                check_id, column = _classify_note(note)
+                invalid_value = (
+                    _json_safe(failed_df.at[idx, column])
+                    if column and column in failed_df.columns else None
+                )
+                error_id = hashlib.sha1(
+                    f"{file_id}|{record_no}|{check_id}|{column}".encode()
+                ).hexdigest()[:8]
+                sk = (f"TS#{row_ts}#CHECK#{check_id}"
+                      f"#FIELD#{column}#ERROR#{error_id}")
+                items.append({
+                    "PK": f"FILE#{file_id}",
+                    "SK": sk,
+                    "row_number": record_no,
+                    "timestamp": row_ts,
+                    "check_id": check_id,
+                    "column": column or None,
+                    "severity": "ERROR",
+                    "message": note,
+                    "invalid_value": invalid_value,
+                    "facility_id": facility,
+                    "unit_id": unit,
+                    "item_id": None,
+                    "created_at": created_at,
+                })
+        return items
+
+    def build_file_item(self, csv_path, file_id, df, error_items, created_at,
+                        schema_invalid=False, schema_reason=None):
+        """
+        Build the file-level Files (Table 3) META item.
+
+        Returns:
+            dict: An item keyed by PK=FILE#<file_id> / SK=META with the
+            file-level attributes and validation_checks[] summary.
+        """
+        def _unique(col):
+            if col not in df.columns:
+                return []
+            return sorted({str(v).strip() for v in df[col].dropna()
+                           if str(v).strip()})
+
+        valid_ts = sorted(t for t in self._timestamp_series(df) if t)
+
+        if schema_invalid:
+            checks = [{
+                "check_id": "SCHEMA",
+                "display_order": 1,
+                "result": "ERROR",
+                "summary": schema_reason or "Schema invalid",
+                "affected_row_count": int(len(df)),
+            }]
+        else:
+            affected = {cid: set() for cid, _ in CHECK_ORDER}
+            for e in error_items:
+                if e["check_id"] in affected and e["row_number"] is not None:
+                    affected[e["check_id"]].add(e["row_number"])
+            checks = []
+            for order, (cid, label) in enumerate(CHECK_ORDER, start=1):
+                n = len(affected[cid])
+                checks.append({
+                    "check_id": cid,
+                    "display_order": order,
+                    "result": "ERROR" if n else "PASS",
+                    "summary": (f"{n} record(s) affected" if n
+                                else f"{label}: passed"),
+                    "affected_row_count": n,
+                })
+
+        error_count = sum(1 for c in checks if c["result"] == "ERROR")
+        return {
+            "PK": f"FILE#{file_id}",
+            "SK": "META",
+            "org_id": self.org_id,
+            "file_name": os.path.basename(csv_path),
+            "file_type": self.file_type,
+            "row_count": int(len(df)),
+            "facility_ids": _unique("Facility"),
+            "unit_ids": _unique("Unit"),
+            "census_start": valid_ts[0] if valid_ts else None,
+            "census_end": valid_ts[-1] if valid_ts else None,
+            "workflow_status": "COMPLETED",
+            "validation_result": "BLOCKED" if error_count else "CLEAN",
+            "error_count": error_count,
+            "warning_count": 0,
+            "validation_checks": checks,
+        }
+
+    def write_dynamo_output(self, csv_path, file_id, df, failed_df,
+                            schema_invalid=False, schema_reason=None):
+        """
+        Write the DynamoDB-shaped JSON files (Files META item + Validation Errors
+        items) to dynamo_dir.
+
+        Returns:
+            tuple[str | None, str | None]: (file_item_path, error_items_path), or
+            (None, None) when disabled.
+        """
+        if not self.write_dynamo:
+            return None, None
+
+        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Structural (schema) failures are recorded on the file item only, not as
+        # row-level error items (per dynamo_schema.md).
+        error_items = ([] if schema_invalid
+                       else self.build_error_items(file_id, failed_df, created_at))
+        file_item = self.build_file_item(
+            csv_path, file_id, df, error_items, created_at,
+            schema_invalid=schema_invalid, schema_reason=schema_reason,
+        )
+
+        os.makedirs(self.dynamo_dir, exist_ok=True)
+        stem = os.path.splitext(os.path.basename(csv_path))[0]
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_path = os.path.join(self.dynamo_dir, f"{stem}_file_{stamp}.json")
+        errors_path = os.path.join(self.dynamo_dir, f"{stem}_errors_{stamp}.json")
+        with open(file_path, "w", encoding="utf-8") as fh:
+            json.dump(file_item, fh, indent=2)
+        with open(errors_path, "w", encoding="utf-8") as fh:
+            json.dump(error_items, fh, indent=2)
+        return file_path, errors_path
+
     # ── entry point ─────────────────────────────────────────────────────────────
 
     def process_file(self, path):
@@ -650,6 +891,9 @@ class CensusFileProcessor:
 
         log.info("Loaded %d rows x %d columns.", len(df), len(df.columns))
 
+        # One id per file, used to key the DynamoDB-shaped items for this run.
+        file_id = uuid.uuid4().hex
+
         # File-level schema gate: per-record checks need the expected columns.
         missing = [c for c in self.expected_columns if c not in df.columns]
         extra = [c for c in df.columns if c not in self.expected_columns]
@@ -667,6 +911,12 @@ class CensusFileProcessor:
             summary_path = self.write_rejection_summary(path, rejected)
             if summary_path:
                 log.info("Rejection summary --> %s", summary_path)
+            file_item_path, _ = self.write_dynamo_output(
+                path, file_id, df, rejected,
+                schema_invalid=True, schema_reason=reason,
+            )
+            if file_item_path:
+                log.info("DynamoDB file item --> %s", file_item_path)
             log.error("=" * 70)
             return 1
 
@@ -681,6 +931,9 @@ class CensusFileProcessor:
 
         successful_path, rejected_path = self.route_records(path, passed_df, failed_df)
         summary_path = self.write_rejection_summary(path, failed_df)
+        file_item_path, error_items_path = self.write_dynamo_output(
+            path, file_id, df, failed_df
+        )
 
         log.info("=" * 70)
         log.info("SUMMARY: %d record(s) passed, %d record(s) rejected.",
@@ -693,6 +946,10 @@ class CensusFileProcessor:
                      rejected_path, len(failed_df))
         if summary_path:
             log.info("Rejection summary  --> %s", summary_path)
+        if file_item_path:
+            log.info("DynamoDB file item --> %s", file_item_path)
+        if error_items_path:
+            log.info("DynamoDB errors    --> %s", error_items_path)
         log.info("=" * 70)
 
         return 0 if n_fail == 0 else 1

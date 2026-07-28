@@ -75,6 +75,25 @@ If the file is missing an expected column entirely, per-record checks can't run,
 so the whole file is rejected. The process exits `0` when all records pass and
 `1` when any record is rejected.
 
+### DynamoDB-shaped output
+
+When `write_dynamo_output` is enabled (default), each run also emits two JSON
+files to `data/dynamo/`, shaped as items from
+[`dynamo_schema.md`](dynamo_schema.md) — plain dicts ready for `boto3.put_item`
+once live DynamoDB writing is wired up (the intended eventual destination):
+
+- **`<file>_file_<ts>.json`** — one **Files (Table 3)** `META` item summarizing
+  the file: `row_count`, `facility_ids`/`unit_ids`, census date range,
+  `validation_result` (`CLEAN`/`BLOCKED`), and a `validation_checks[]` breakdown.
+- **`<file>_errors_<ts>.json`** — one **Validation Errors (Table 4)** item per
+  record-level problem (`check_id`, `column`, `severity`, `message`, timestamped
+  `SK`, deterministic `error_id`).
+
+Each run generates a fresh `file_id` (UUID) used as the `FILE#<file_id>` key.
+`org_id` and `file_type` come from the config. All record-level failures are
+severity `ERROR`; structural schema failures are recorded on the file item only
+(no row-level error items), per the schema.
+
 ## Planned functionality (not yet implemented)
 
 In production, `data/valid_units.txt` is the **bootstrap list of valid units** —
@@ -114,7 +133,8 @@ DataValidation_v2/
 │   ├── test/                  # generated fixtures
 │   ├── successful_data/       # passing rows land here
 │   ├── rejected_data/         # failing rows land here (+ RejectionReason)
-│   └── rejected_summary/      # aggregated per-Unit/error rejection reports
+│   ├── rejected_summary/      # aggregated per-Unit/error rejection reports
+│   └── dynamo/                # DynamoDB-shaped JSON (Files + Validation Errors)
 ├── logs/                      # per-file run logs
 ├── pytest.ini
 └── requirements-dev.txt

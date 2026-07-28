@@ -37,7 +37,8 @@ def write_config():
     returns its path. Flags/values are overridable via keyword arguments.
     """
     def _write(tmp_path, valid_units_path, route_validated_files=True,
-               write_rejection_summary=True, check_duplicates=True):
+               write_rejection_summary=True, check_duplicates=True,
+               write_dynamo_output=True):
         d = str(tmp_path).replace("\\", "/")
         vu = str(valid_units_path).replace("\\", "/")
         cfg = textwrap.dedent(f'''
@@ -63,6 +64,11 @@ def write_config():
             write_rejection_summary = {str(write_rejection_summary).lower()}
             check_duplicates = {str(check_duplicates).lower()}
             timestamp_column = "VolTimestamp"
+            [dynamo]
+            write_dynamo_output = {str(write_dynamo_output).lower()}
+            dynamo_dir = "{d}/dynamo"
+            org_id = "test-org"
+            file_type = "CENSUS"
             [logging]
             format = "%(asctime)s  %(levelname)-8s  %(message)s"
             datefmt = "%Y-%m-%d %H:%M:%S"

@@ -11,3 +11,4 @@ logs/
 data/successful_data/
 data/rejected_data/
 data/rejected_summary/
+data/dynamo/

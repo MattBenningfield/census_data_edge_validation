@@ -69,6 +69,19 @@ check_duplicates = true
 # validation-errors schema, and the original VolDate/VolHour columns are dropped.
 timestamp_column = "VolTimestamp"
 
+[dynamo]
+# When true, also emit DynamoDB-shaped JSON output alongside the flat CSV files:
+# a file-level META item (Files table) and one item per record-level error
+# (Validation Errors table), matching dynamo_schema.md. These are plain JSON
+# dicts ready to hand to boto3.put_item once live DynamoDB writing is wired up.
+write_dynamo_output = true
+# Directory the DynamoDB-shaped JSON files are written to.
+dynamo_dir = "../data/dynamo"
+# Tenant/org identifier stamped onto the file item (not derivable from the CSV).
+org_id = "unknown"
+# file_type stamped onto the file item.
+file_type = "CENSUS"
+
 [logging]
 format = "%(asctime)s  %(levelname)-8s  %(message)s"
 datefmt = "%Y-%m-%d %H:%M:%S"

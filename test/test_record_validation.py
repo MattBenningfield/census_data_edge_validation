@@ -285,6 +285,112 @@ def test_output_timestamp_blank_when_datetime_invalid(tmp_path, monkeypatch,
     assert pd.isna(value) or value == ""   # empty cell reads back as NaN
 
 
+# ─────────────────────────── dynamodb-shaped output ─────────────────────────
+
+def test_build_error_items_maps_reasons(processor):
+    u = _first_unit(processor)
+    failed = pd.DataFrame({
+        "Type": ["Census", "Census"],
+        "Facility": ["F", "F"],
+        "Unit": [u, "9999-Unknown Test Unit"],
+        "VolDate": ["1/13/2026", "1/13/2026"],
+        "VolHour": [5, 6],
+        "Volume": [-1, 5],
+        processor.rejection_reason_column: [
+            "Volume: below minimum (0)",
+            "Unit: not in valid list",
+        ],
+    })
+    items = processor.build_error_items("file-abc", failed, "2026-07-28T00:00:00Z")
+    assert len(items) == 2
+
+    vol = next(i for i in items if i["check_id"] == "VALUE_FORMAT")
+    assert vol["PK"] == "FILE#file-abc"
+    assert vol["SK"].startswith("TS#2026-01-13T05:00:00Z#CHECK#VALUE_FORMAT#FIELD#Volume#ERROR#")
+    assert vol["column"] == "Volume"
+    assert vol["severity"] == "ERROR"
+    assert vol["invalid_value"] == -1
+    assert vol["timestamp"] == "2026-01-13T05:00:00Z"
+
+    unit = next(i for i in items if i["check_id"] == "UNKNOWN_UNIT")
+    assert unit["row_number"] == 2
+    assert unit["message"] == "Unit: not in valid list"
+
+
+def test_build_error_items_sentinel_timestamp(processor):
+    """A bad date yields the sentinel timestamp in the SK and attribute."""
+    failed = pd.DataFrame({
+        "Type": ["Census"], "Facility": ["F"], "Unit": ["UnitA"],
+        "VolDate": ["not-a-date"], "VolHour": [5], "Volume": [5],
+        processor.rejection_reason_column: ["VolDate: not a valid date"],
+    })
+    items = processor.build_error_items("f1", failed, "2026-07-28T00:00:00Z")
+    assert items[0]["timestamp"] == "0000-00-00T00:00:00Z"
+    assert "TS#0000-00-00T00:00:00Z#" in items[0]["SK"]
+
+
+def test_build_file_item_summary(processor, make_df):
+    df = make_df([
+        ["Census", "F1", "UnitA", "1/13/2026", 0, 10],
+        ["Census", "F1", "UnitB", "1/14/2026", 1, 20],
+    ])
+    errors = [{"check_id": "VALUE_FORMAT", "row_number": 2}]
+    item = processor.build_file_item("batch.csv", "file-xyz", df, errors,
+                                     "2026-07-28T00:00:00Z")
+    assert item["PK"] == "FILE#file-xyz" and item["SK"] == "META"
+    assert item["file_name"] == "batch.csv"
+    assert item["row_count"] == 2
+    assert item["facility_ids"] == ["F1"]
+    assert item["unit_ids"] == ["UnitA", "UnitB"]
+    assert item["census_start"] == "2026-01-13T00:00:00Z"
+    assert item["census_end"] == "2026-01-14T01:00:00Z"
+    assert item["validation_result"] == "BLOCKED"
+    assert item["error_count"] == 1
+    fmt = next(c for c in item["validation_checks"] if c["check_id"] == "VALUE_FORMAT")
+    assert fmt["result"] == "ERROR" and fmt["affected_row_count"] == 1
+    schema = next(c for c in item["validation_checks"] if c["check_id"] == "SCHEMA")
+    assert schema["result"] == "PASS"
+
+
+def test_process_file_writes_dynamo_json(tmp_path, monkeypatch, write_config):
+    import json
+
+    proc = _make_processor(tmp_path, monkeypatch, write_config, ["UnitA"])
+    df = pd.DataFrame([
+        ["Census", "F", "UnitA", "1/13/2026", 0, 5],    # passes
+        ["Census", "F", "BadUnit", "1/13/2026", 1, 6],  # unknown unit -> error
+    ], columns=COLS)
+    input_csv = tmp_path / "batch.csv"
+    df.to_csv(input_csv, index=False)
+
+    assert proc.process_file(str(input_csv)) == 1
+
+    dynamo = tmp_path / "dynamo"
+    file_json = next(p for p in os.listdir(dynamo) if "_file_" in p)
+    errors_json = next(p for p in os.listdir(dynamo) if "_errors_" in p)
+
+    file_item = json.loads((dynamo / file_json).read_text())
+    assert file_item["SK"] == "META"
+    assert file_item["org_id"] == "test-org"
+    assert file_item["validation_result"] == "BLOCKED"
+
+    error_items = json.loads((dynamo / errors_json).read_text())
+    assert len(error_items) == 1
+    assert error_items[0]["check_id"] == "UNKNOWN_UNIT"
+    assert error_items[0]["PK"] == file_item["PK"]
+
+
+def test_dynamo_output_can_be_disabled(tmp_path, monkeypatch, write_config):
+    proc = _make_processor(tmp_path, monkeypatch, write_config, ["UnitA"],
+                           write_dynamo_output=False)
+    df = pd.DataFrame([["Census", "F", "BadUnit", "1/13/2026", 0, 5]], columns=COLS)
+    input_csv = tmp_path / "batch.csv"
+    df.to_csv(input_csv, index=False)
+
+    assert proc.process_file(str(input_csv)) == 1
+    assert not os.path.isdir(tmp_path / "dynamo")
+
+
 # ─────────────────────────── rejection summary ──────────────────────────────
 
 def test_format_ranges():
