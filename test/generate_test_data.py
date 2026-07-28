@@ -1,5 +1,5 @@
 """
-Test-data generator for record_validation.py (DataValidation v2)
+Test-data generator for the census_validation package (DataValidation v2)
 ================================================================
 Writes small CSV fixtures under data/test/, each crafted to exercise the
 per-record validator. A clean baseline is written first; every other fixture
@@ -13,7 +13,7 @@ Run:
     python generate_test_data.py
 
 Then validate any fixture:
-    python src/record_validation.py data/test/test_record_mix.csv
+    python src/validate.py data/test/test_record_mix.csv
 """
 
 import os

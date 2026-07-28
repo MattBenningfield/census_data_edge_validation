@@ -1,10 +1,10 @@
 """
-Shared pytest fixtures/config for the record-validator test suite.
+Shared pytest fixtures for the census_validation test suite.
 
-Puts src/ on sys.path so record_validation can be imported, and provides helpers
-for building DataFrames and temporary config files. Tests build their own
-CensusFileProcessor instances (from the real config or a temp one), so there is
-no module-level configuration step here.
+Puts src/ on sys.path so the ``census_validation`` package imports, and provides
+a real-config ``settings``/``processor``, a DataFrame builder, and a temp-config
+writer. Tests build their own processors/settings, so there is no module-level
+configuration step.
 """
 import os
 import sys
@@ -19,7 +19,22 @@ SRC = os.path.join(
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
+from census_validation.config import load_settings           # noqa: E402
+from census_validation.processor import CensusFileProcessor   # noqa: E402
+
 COLS = ["Type", "Facility", "Unit", "VolDate", "VolHour", "Volume"]
+
+
+@pytest.fixture
+def settings():
+    """Settings loaded from the real project config."""
+    return load_settings()
+
+
+@pytest.fixture
+def processor():
+    """A processor built from the real project config (realistic valid_units)."""
+    return CensusFileProcessor.from_config_file()
 
 
 @pytest.fixture

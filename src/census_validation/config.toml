@@ -1,12 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Configuration for record_validation.py (DataValidation v2)
+# Configuration for the census_validation package.
 #
-# This is the SIMPLER, per-record validator. Every row is checked on its own and
-# routed individually: clean, valid rows go to accepted_dir; rows that fail any
-# check go to rejected_dir with a reason column explaining why.
-#
-# Relative paths are resolved against the script's directory (BASE_DIR, i.e. src/).
-# Absolute paths are used as-is. Override the config file location with the
+# Relative paths resolve against this file's directory (src/census_validation/),
+# so ../../ points at the project root's data/ and logs/ folders. Absolute paths
+# are used as-is. Override the config location with the
 # WFAI_RECORD_VALIDATION_CONFIG environment variable.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -29,54 +26,45 @@ max_hour = 23
 # Volume must be an integer >= min_volume.
 min_volume = 0
 # When true, unit names must match valid_units_file exactly (case-sensitive).
-# When false, the comparison ignores letter case.
 case_sensitive_units = true
 
 [paths]
-# Relative paths resolve against src/, so ../ points at the sibling data/ and
-# logs/ folders. Default file validated when no path is passed on the CLI.
-default_file = "../data/test/test_record_mix.csv"
+# Default file validated when no path is passed on the CLI.
+default_file = "../../data/test/test_record_mix.csv"
 # Root under which per-file log folders are created.
-log_root = "../logs"
+log_root = "../../logs"
 # Rows that pass every check are routed here.
-accepted_dir = "../data/successful_data"
+accepted_dir = "../../data/successful_data"
 # Rows that fail one or more checks are routed here.
-rejected_dir = "../data/rejected_data"
+rejected_dir = "../../data/rejected_data"
 # Aggregated rejection reports (one row per Unit + error type) are written here.
-rejected_summary_dir = "../data/rejected_summary"
-# List of valid/known units. A .txt file with one unit per line, or a .csv
-# file with a "Unit" column. Units not in this list are rejected.
-valid_units_file = "../data/valid_units.txt"
+rejected_summary_dir = "../../data/rejected_summary"
+# Bootstrap list of valid/known units (a .txt with one unit per line, or a .csv
+# with a "Unit" column). Units not in this list are rejected.
+valid_units_file = "../../data/valid_units.txt"
 
 [behavior]
-# When true, validated records are written out: passing rows to accepted_dir and
-# failing rows (with a reason column) to rejected_dir. When false, nothing is
-# written and the run only logs a summary.
+# When true, validated records are written out (passing -> accepted_dir, failing
+# -> rejected_dir with a reason column). When false, the run only logs a summary.
 route_validated_files = true
 # Name of the column appended to rejected records explaining why they failed.
 rejection_reason_column = "RejectionReason"
-# When true, also write an aggregated rejection report to rejected_summary_dir:
-# one row per (Unit, error type) with a count, the record numbers, and the date
-# range affected. Requires route_validated_files = true.
+# When true, also write an aggregated rejection report to rejected_summary_dir.
 write_rejection_summary = true
 # When true, run the duplicate check (CHECK 5): among rows sharing dup_keys, keep
-# the highest-Volume row and reject the rest as "duplicate value". When false,
-# duplicates are left untouched and all pass through the other checks normally.
+# the highest-Volume row and reject the rest as "duplicate value".
 check_duplicates = true
-# Name of the single timestamp column written to the successful/rejected output
-# files. On output, VolDate and VolHour are combined into this column, formatted
-# as "YYYY-MM-DDTHH:00:00Z" (UTC, hour resolution) to match the DynamoDB
-# validation-errors schema, and the original VolDate/VolHour columns are dropped.
+# Name of the single timestamp column written to the output files. On output,
+# VolDate and VolHour are combined into this column ("YYYY-MM-DDTHH:00:00Z") and
+# the original VolDate/VolHour columns are dropped.
 timestamp_column = "VolTimestamp"
 
 [dynamo]
-# When true, also emit DynamoDB-shaped JSON output alongside the flat CSV files:
-# a file-level META item (Files table) and one item per record-level error
-# (Validation Errors table), matching dynamo_schema.md. These are plain JSON
-# dicts ready to hand to boto3.put_item once live DynamoDB writing is wired up.
+# When true, also emit DynamoDB-shaped JSON (a Files META item and one Validation
+# Errors item per record-level error), matching dynamo_schema.md.
 write_dynamo_output = true
 # Directory the DynamoDB-shaped JSON files are written to.
-dynamo_dir = "../data/dynamo"
+dynamo_dir = "../../data/dynamo"
 # Tenant/org identifier stamped onto the file item (not derivable from the CSV).
 org_id = "unknown"
 # file_type stamped onto the file item.

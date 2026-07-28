@@ -2,9 +2,11 @@
 
 A simpler, **per-record** gate for census time-series data. Where the original
 DataValidation project reasons about whole `(Type, Facility, Unit)` series —
-date gaps, 24-hour coverage, duplicate keys — this version checks every **row**
-on its own to confirm it is clean, well-formatted, and carries the minimum
-information needed to proceed further in the validation pipeline.
+date gaps, 24-hour coverage — this version checks every **row** on its own to
+confirm it is clean, well-formatted, and carries the minimum information needed
+to proceed further in the validation pipeline. The one exception is a
+cross-record **duplicate** check that keeps the highest-`Volume` row among rows
+that share the same key (see check 5 below).
 
 ## Expected schema
 
@@ -72,8 +74,9 @@ column name is configurable via `timestamp_column` in the config.
 > be written to a file directory.)
 
 If the file is missing an expected column entirely, per-record checks can't run,
-so the whole file is rejected. The process exits `0` when all records pass and
-`1` when any record is rejected.
+so the whole file is rejected. The process exits `0` when all records pass, `1`
+when any record is rejected or the file's schema is invalid, and `2` when the
+input file is missing or unreadable.
 
 ### DynamoDB-shaped output
 
@@ -122,12 +125,23 @@ contact any database.
 ```
 DataValidation_v2/
 ├── src/
-│   ├── record_validation.py   # CensusFileProcessor + CLI entry point
-│   └── config.toml            # columns, rules, paths, routing
+│   ├── validate.py            # thin CLI launcher
+│   └── census_validation/     # the validator package
+│       ├── config.py          # settings loading (Settings dataclass)
+│       ├── config.toml        # columns, rules, paths, routing
+│       ├── valid_units.py     # known-units reference loading
+│       ├── checks.py          # the six per-record checks
+│       ├── duplicates.py      # duplicate resolution (CHECK 5)
+│       ├── timestamp.py       # VolDate + VolHour -> VolTimestamp
+│       ├── summary.py         # aggregated rejection report
+│       ├── dynamo_items.py    # DynamoDB item builders (Files + Errors)
+│       ├── routing.py         # write records / summary / JSON to disk
+│       ├── processor.py       # CensusFileProcessor (orchestration)
+│       └── __main__.py        # `python -m census_validation`
 ├── test/
 │   ├── conftest.py
 │   ├── generate_test_data.py  # writes fixtures into data/test/
-│   └── test_record_validation.py
+│   └── test_*.py              # one test module per source module
 ├── data/
 │   ├── valid_units.txt        # bootstrap known-units reference (from the DB)
 │   ├── test/                  # generated fixtures
@@ -144,10 +158,10 @@ DataValidation_v2/
 
 ```bash
 # validate the configured default file
-py src/record_validation.py
+py src/validate.py
 
 # validate a specific file
-py src/record_validation.py data/test/test_record_mix.csv
+py src/validate.py data/test/test_record_mix.csv
 
 # (re)generate the test fixtures
 py test/generate_test_data.py
@@ -157,8 +171,9 @@ py -m pytest -q
 ```
 
 Behavior, columns, thresholds, and paths are all configurable in
-[`src/config.toml`](src/config.toml). Override the config location with the
-`WFAI_RECORD_VALIDATION_CONFIG` environment variable.
+[`src/census_validation/config.toml`](src/census_validation/config.toml).
+Override the config location with the `WFAI_RECORD_VALIDATION_CONFIG`
+environment variable.
 
 ## Programmatic use
 
@@ -169,7 +184,7 @@ once, then call `process_file()` per file. This suits a warm-start AWS Lambda
 handler (construct the processor outside the handler, invoke it per event).
 
 ```python
-from record_validation import CensusFileProcessor
+from census_validation import CensusFileProcessor
 
 processor = CensusFileProcessor.from_config_file()   # or pass a config path
 exit_code = processor.process_file("data/test/test_record_mix.csv")
@@ -178,6 +193,8 @@ exit_code = processor.process_file("data/test/test_record_mix.csv")
 ```
 
 `process_file()` returns the exit code rather than terminating the process; only
-the CLI `main()` calls `sys.exit()`. Individual steps are also available on the
-instance — `validate_records(df)` returns a per-row reason Series, and
-`build_rejection_summary(failed_df)` returns the aggregated report.
+the CLI entry point calls `sys.exit()`. The pipeline is split into focused
+modules — `validate_records(df)` on the processor returns a per-row reason
+Series, and the `checks`, `duplicates`, `timestamp`, `summary`, and
+`dynamo_items` modules expose their steps as standalone functions for reuse and
+testing.
